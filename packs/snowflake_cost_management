@@ -1,0 +1,62 @@
+// Automatic Clustering Spend
+// this query finds tables where the automatic clustering spend has gone over 10 credits in the past 5 hours
+with table_spend as (
+    select
+    table_ID,
+    table_name,
+    sum(credits_used) as credits
+    from snowflake.account_usage.automatic_clustering_history
+    where datediff(hour,end_time,current_timestamp())<5
+    group by 1,2 order by 3 desc)
+select * from table_spend where credits > 10
+; 
+
+// Materialized View Spend
+// this query finds tables where the materialized view spend has gone over 10 credits in the past 5 hours
+with table_spend as (
+    select
+    table_id,
+    table_name,
+    sum(credits_used) as credits
+    from snowflake.account_usage.materialized_view_refresh_history
+    where datediff(hour,end_time,current_timestamp())<5
+    group by 1,2 order by 3 desc)
+select * from table_spend where credits > 10
+;
+
+// Snowpipe spend
+// this query finds tables where the snowpipe spend has gone over 10 credits in the past 12 hours
+with pipe_spend as (
+    select
+    pipe_id,
+    pipe_name,
+    sum(credits_used) as credits_used
+    from snowflake.account_usage.pipe_usage_history
+    where datediff(hour,end_time,current_timestamp())<12
+    group by 1,2 order by 3 desc)
+select * from pipe_spend where credits_used > 10
+;
+
+// Warehouse Spending Spike
+// this query compares the last day credit spend vs. the last 28 day average for the account
+with average_use as (
+    select
+    warehouse_id,
+    warehouse_name,
+    sum(credits_used) as total_credits_used,
+    sum(credits_used)/28 as avg_credits_used
+    from snowflake.account_usage.warehouse_metering_history
+    where datediff(day,start_time,current_timestamp())<28
+    group by 1,2
+    )
+    select
+    w.warehouse_id,
+    w.warehouse_name,
+    sum(w.credits_used) as ld_credits_used,
+    a.avg_credits_used
+    from snowflake.account_usage.warehouse_metering_history w
+    join average_use a on w.warehouse_id = a.warehouse_id
+    where datediff(day,start_time,current_timestamp())<2
+    group by 1,2,4
+    having ld_credits_used > (a.avg_credits_used * 2)
+;
